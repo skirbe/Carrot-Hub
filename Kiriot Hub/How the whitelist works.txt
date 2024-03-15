@@ -1,0 +1,26 @@
+Pre-auth:
+1. The script makes a request to "math.uwu" endpoint with two generated numbers (a and b), encrypted with RC4+, the encryption key being game.JobId
+2. The endpoint verifies if the two numbers are generated in a valid way, and also if JobId received matches the HttpGet headers, and if so returns the magic number 256 and the current os.time(), encrypted with RC4+, the encryption key being bit.lshift(PlaceId, a) + bit.rshift(PlaceId, 32-b)
+3. The script uses the obtained magic number 256 as a seed for Random.new() in order to construct the encryption key RC4Key which is shared between the client and the server (used later on)
+
+Auth:
+1. The script makes a request to "check.uwu" endpoint with a random string (called randKeyPart)
+2. The endpoint returns the syn hwid and syn authentication time headers encrypted with RC4, the encryption key being a server constant HwidKey concatenated with randKeyPart
+3. The client makes a request to "auth.uwu" endpoint, passing the encrypted hwid and authentication time, randKeyPart, current user id, and the whitelist key entered by the user
+4. The endpoint decrypts the hwid and authentication time, verifies both against the current request's headers, then checks if the key and hwid are in the database. If they aren't, it sends a response with random data, without explicitly marking it as failed (instead the client script deems it as failed if it fails to fall through).
+5. If everything is valid, it returns a response constructed like this:
+
+RC4(string.char(#NewKey) .. RC4(NewKey, RC4Key) .. string.char(#uiModule) .. uiModule .. isSnitch .. randomJunk .. string.char(#encrConstsKey) .. encrConstsKey .. <constants encrypted with a random string called constsKey> .. RC4(Key, NewKey), randKeyPart)
+
+where
+NewKey is a random string
+RC4Key is the aforementioned static key that the client and server share
+uiModule is the first 20 characters of the UI Lib's securelua string, encrypted with RC4, the encryption key being randKeyPart:reverse()
+(this was especially useful, since trying to run an invalid securelua string would cause a crash)
+isSnitch is "\1"if the buyer was marked as snitch for the current game (which would make the hub pretend some features are broken)
+encrConstsKey is RC4(RC4(constsKey, randKeyPart), RC4Key)
+I forgot how the constants format worked exactly (the code is too messy), but they were also encrypted with RC4+ which is a variation of RC4, meaning in order to decrypt a constant you had to decrypt all previous ones in order.
+
+6. The client decrypts and decodes the response, and if all sanity checks are passed, it proceeds with the hub's execution.
+
+There are also random small client-sided checks along the way, but there's too many of them to list here.
